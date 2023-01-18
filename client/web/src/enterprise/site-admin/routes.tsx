@@ -188,6 +188,13 @@ export const enterpriseSiteAdminAreaRoutes: readonly SiteAdminAreaRoute[] = (
             render: () => <ExecutorsSiteAdminArea />,
             condition: () => Boolean(window.context?.executorsEnabled),
         },
+
+        // Auth-related routes
+        {
+            path: '/roles',
+            exact: true,
+            render: () => <p>Roles</p>
+        }
     ] as readonly (SiteAdminAreaRoute | undefined)[]
 ).filter(Boolean) as readonly SiteAdminAreaRoute[]
 
