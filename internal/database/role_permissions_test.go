@@ -298,7 +298,7 @@ func TestRolePermissionGetByPermissionID(t *testing.T) {
 	})
 }
 
-func TestRolePermissionDelete(t *testing.T) {
+func TestRolePermissionRevoke(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -361,6 +361,53 @@ func TestRolePermissionDelete(t *testing.T) {
 			RoleID:       r.ID,
 			PermissionID: p.ID,
 		})
+	})
+}
+
+func TestBulkAssignPermissionsToRole(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	logger := logtest.Scoped(t)
+	db := NewDB(logger, dbtest.NewDB(logger, t))
+	store := db.RolePermissions()
+
+	numberOfPerms := 4
+	var perms []int32
+	for i := 0; i < numberOfPerms; i++ {
+		perm := createTestPermissionForRolePermission(ctx, fmt.Sprintf("READ-%d", i), t, db)
+		perms = append(perms, perm.ID)
+	}
+
+	role := createTestRoleForRolePermission(ctx, "TEST-ROLE", t, db)
+
+	t.Run("without role ID", func(t *testing.T) {
+		rps, err := store.BulkAssignPermissionsToRole(ctx, BulkAssignPermissionsToRoleOpts{})
+		require.Nil(t, rps)
+		require.ErrorContains(t, err, "missing role id")
+	})
+
+	t.Run("without permissions", func(t *testing.T) {
+		rps, err := store.BulkAssignPermissionsToRole(ctx, BulkAssignPermissionsToRoleOpts{
+			RoleID: role.ID,
+		})
+		require.Nil(t, rps)
+		require.ErrorContains(t, err, "missing permissions")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		rps, err := store.BulkAssignPermissionsToRole(ctx, BulkAssignPermissionsToRoleOpts{
+			RoleID:      role.ID,
+			Permissions: perms,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, rps)
+		require.Len(t, rps, numberOfPerms)
+
+		for index, rp := range rps {
+			require.Equal(t, rp.RoleID, role.ID)
+			require.Equal(t, rp.PermissionID, perms[index])
+		}
 	})
 }
 
