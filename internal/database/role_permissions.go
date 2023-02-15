@@ -45,6 +45,11 @@ type BulkAssignPermissionsToSystemRolesOpts struct {
 	PermissionID int32
 }
 
+type BulkAssignPermissionsToRoleOpts struct {
+	RoleID      int32
+	Permissions []int32
+}
+
 type RolePermissionStore interface {
 	basestore.ShareableStore
 
@@ -52,6 +57,8 @@ type RolePermissionStore interface {
 	Assign(ctx context.Context, opts AssignRolePermissionOpts) error
 	// AssignToSystemRole is used to assign a permission to a system role.
 	AssignToSystemRole(ctx context.Context, opts AssignToSystemRoleOpts) error
+	// BulkAssignPermissionsToRole is used to assign multiple permissions to a role.
+	BulkAssignPermissionsToRole(ctx context.Context, opts BulkAssignPermissionsToRoleOpts) ([]*types.RolePermission, error)
 	// BulkAssignToSystemRole is used to assign a permission to multiple system roles.
 	BulkAssignPermissionsToSystemRoles(ctx context.Context, opts BulkAssignPermissionsToSystemRolesOpts) error
 	// GetByRoleIDAndPermissionID returns one RolePermission associated with the provided role and permission.
@@ -231,6 +238,31 @@ func (rp *rolePermissionStore) Assign(ctx context.Context, opts AssignRolePermis
 		return errors.Wrap(err, "scanning role permission")
 	}
 	return nil
+}
+
+func (rp *rolePermissionStore) BulkAssignPermissionsToRole(ctx context.Context, opts BulkAssignPermissionsToRoleOpts) ([]*types.RolePermission, error) {
+	if opts.RoleID == 0 {
+		return nil, errors.New("missing role id")
+	}
+
+	if len(opts.Permissions) == 0 {
+		return nil, errors.New("missing permissions")
+	}
+
+	var rps []*sqlf.Query
+	for _, p := range opts.Permissions {
+		rps = append(rps, sqlf.Sprintf("( %s, %s )", opts.RoleID, p))
+	}
+
+	q := sqlf.Sprintf(
+		rolePermissionAssignQueryFmtStr,
+		sqlf.Join(rolePermissionInsertColumns, ", "),
+		sqlf.Join(rps, ", "),
+		sqlf.Join(rolePermissionColumns, ", "),
+	)
+
+	var scanRolePermissions = basestore.NewSliceScanner(scanRolePermission)
+	return scanRolePermissions(rp.Query(ctx, q))
 }
 
 func (rp *rolePermissionStore) AssignToSystemRole(ctx context.Context, opts AssignToSystemRoleOpts) error {
