@@ -46,6 +46,7 @@ func (r *Resolver) Roles(ctx context.Context, args *gql.ListRoleArgs) (*graphqlu
 			OrderBy: database.OrderBy{
 				{Field: "roles.id"},
 			},
+			Ascending: true,
 		},
 	)
 }
