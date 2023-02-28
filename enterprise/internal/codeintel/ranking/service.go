@@ -2,7 +2,6 @@ package ranking
 
 import (
 	"context"
-	"sort"
 	"strings"
 	"time"
 
@@ -92,65 +91,39 @@ func repoRankFromConfig(siteConfig schema.SiteConfiguration, repoName string) fl
 
 var allPathsPattern = lazyregexp.New(".*")
 
-// GetDocumentRank returns a map from paths within the given repo to their rank vector. Paths are
-// assumed to be ordered by each pairwise component of the resulting vector, higher ranks coming
-// earlier. We currently rank documents by path name length and lexicographic order, while performing
-// a few heuristics to sink generated, test, and vendor files lower in the ranking.
-//
-// Rank vector index labels:
-//   - precision                   [0 to 1]
-//   - generated                   [0 or 1]
-//   - vendor                      [0 or 1]
-//   - test                        [0 or 1]
-//   - global document rank        [0 to 1] (=0 w/o pagerank)
-//   - name length                 [0 to 1] (=1 w/  pagerank)
-//   - lexicographic order in repo [0 to 1] (=1 w/  pagerank)
-func (s *Service) GetDocumentRanks(ctx context.Context, repoName api.RepoName) (_ map[string][]float64, err error) {
+type RepoPathRanks struct {
+	MedianReferenceCount int
+	Paths                map[string]PathRank
+}
+
+type PathRank struct {
+	Count int
+}
+
+// GetDocumentRank returns a map from paths within the given repo to their rank vector.
+func (s *Service) GetDocumentRanks(ctx context.Context, repoName api.RepoName) (_ RepoPathRanks, err error) {
 	_, _, endObservation := s.operations.getDocumentRanks.With(ctx, &err, observation.Args{})
 	defer endObservation(1, observation.Args{})
 
-	ranks := map[string][]float64{}
 	documentRanks, ok, err := s.store.GetDocumentRanks(ctx, repoName)
 	if err != nil {
-		return nil, err
+		return RepoPathRanks{}, err
 	}
-	if ok {
-		for path, rank := range documentRanks {
-			ranks[path] = []float64{
-				rank[0],                             // precision level (0, 1]
-				1 - boolRank(isPathGenerated(path)), // rank generated paths lower
-				1 - boolRank(isPathVendored(path)),  // rank vendored paths lower
-				1 - boolRank(isPathTest(path)),      // rank test paths lower
-				squashRange(rank[1]),                // global document rank
-				1,                                   // name length
-				1,                                   // lexicographic order in repo
-			}
+	if !ok {
+		return RepoPathRanks{}, nil
+	}
+
+	pathRanks := make(map[string]PathRank, len(documentRanks))
+	for path, rank := range documentRanks {
+		pathRanks[path] = PathRank{
+			Count: int(rank[1]), // TODO
 		}
 	}
 
-	paths, err := s.gitserverClient.ListFilesForRepo(ctx, repoName, "HEAD", allPathsPattern.Re())
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(paths)
-
-	for i, path := range paths {
-		if _, ok := ranks[path]; ok {
-			continue
-		}
-
-		ranks[path] = []float64{
-			0,                                     // imprecise
-			1 - boolRank(isPathGenerated(path)),   // rank generated paths lower
-			1 - boolRank(isPathVendored(path)),    // rank vendored paths lower
-			1 - boolRank(isPathTest(path)),        // rank test paths lower
-			0,                                     // no global document rank
-			1.0 - squashRange(float64(len(path))), // name length (prefer short names)
-			1.0 - float64(i)/float64(len(paths)),  // lexicographic order in repo
-		}
-	}
-
-	return ranks, nil
+	return RepoPathRanks{
+		MedianReferenceCount: 0, // TODO
+		Paths:                pathRanks,
+	}, nil
 }
 
 func (s *Service) LastUpdatedAt(ctx context.Context, repoIDs []api.RepoID) (map[api.RepoID]time.Time, error) {
