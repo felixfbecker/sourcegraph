@@ -10,7 +10,7 @@ import (
 
 func NewRankingGraphExporter(
 	observationCtx *observation.Context,
-	uploadsService UploadService,
+	rankingService RankingService,
 	numRankingRoutines int,
 	interval time.Duration,
 	batchSize int,
@@ -21,11 +21,11 @@ func NewRankingGraphExporter(
 		"rank.graph-exporter", "exports SCIP data to ranking definitions and reference tables",
 		interval,
 		goroutine.HandlerFunc(func(ctx context.Context) error {
-			if err := uploadsService.ExportRankingGraph(ctx, numRankingRoutines, batchSize, rankingJobEnabled); err != nil {
+			if err := rankingService.ExportRankingGraph(ctx, numRankingRoutines, batchSize, rankingJobEnabled); err != nil {
 				return err
 			}
 
-			if err := uploadsService.VacuumRankingGraph(ctx); err != nil {
+			if err := rankingService.VacuumRankingGraph(ctx); err != nil {
 				return err
 			}
 
@@ -36,7 +36,7 @@ func NewRankingGraphExporter(
 
 func NewRankingGraphMapper(
 	observationCtx *observation.Context,
-	uploadsService UploadService,
+	rankingService RankingService,
 	numRankingRoutines int,
 	interval time.Duration,
 	rankingJobEnabled bool,
@@ -47,7 +47,7 @@ func NewRankingGraphMapper(
 		"rank.graph-mapper", "maps definitions and references data to path_counts_inputs table in store",
 		interval,
 		goroutine.HandlerFunc(func(ctx context.Context) error {
-			numReferenceRecordsProcessed, numInputsInserted, err := uploadsService.MapRankingGraph(ctx, numRankingRoutines, rankingJobEnabled)
+			numReferenceRecordsProcessed, numInputsInserted, err := rankingService.MapRankingGraph(ctx, numRankingRoutines, rankingJobEnabled)
 			if err != nil {
 				return err
 			}
@@ -61,7 +61,7 @@ func NewRankingGraphMapper(
 
 func NewRankingGraphReducer(
 	observationCtx *observation.Context,
-	uploadsService UploadService,
+	rankingService RankingService,
 	numRankingRoutines int,
 	interval time.Duration,
 	rankingJobEnabled bool,
@@ -72,7 +72,7 @@ func NewRankingGraphReducer(
 		"rank.graph-reducer", "reduces path_counts_inputs into a count of paths per repository and stores it in path_ranks table in store.",
 		interval,
 		goroutine.HandlerFunc(func(ctx context.Context) error {
-			numPathRanksInserted, numPathCountsInputsProcessed, err := uploadsService.ReduceRankingGraph(ctx, numRankingRoutines, rankingJobEnabled)
+			numPathRanksInserted, numPathCountsInputsProcessed, err := rankingService.ReduceRankingGraph(ctx, numRankingRoutines, rankingJobEnabled)
 			if err != nil {
 				return err
 			}

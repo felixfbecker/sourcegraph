@@ -5,7 +5,7 @@ import (
 
 	"github.com/sourcegraph/sourcegraph/cmd/worker/job"
 	"github.com/sourcegraph/sourcegraph/enterprise/cmd/worker/shared/init/codeintel"
-	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/uploads"
+	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/ranking"
 	"github.com/sourcegraph/sourcegraph/internal/env"
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
@@ -23,8 +23,8 @@ func (j *graphExporterJob) Description() string {
 
 func (j *graphExporterJob) Config() []env.Config {
 	return []env.Config{
-		uploads.RankingConfigInst,
-		uploads.ConfigExportInst,
+		ranking.RankingConfigInst,
+		ranking.ConfigExportInst,
 	}
 }
 
@@ -34,5 +34,5 @@ func (j *graphExporterJob) Routines(_ context.Context, observationCtx *observati
 		return nil, err
 	}
 
-	return uploads.NewGraphExporters(observationCtx, services.UploadsService), nil
+	return ranking.NewGraphExporters(observationCtx, services.RankingService), nil
 }

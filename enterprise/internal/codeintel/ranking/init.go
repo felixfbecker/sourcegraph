@@ -8,7 +8,9 @@ import (
 	"google.golang.org/api/option"
 
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/ranking/internal/background"
+	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/ranking/internal/lsifstore"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/ranking/internal/store"
+	codeintelshared "github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/shared"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/uploads"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database"
@@ -21,6 +23,7 @@ import (
 func NewService(
 	observationCtx *observation.Context,
 	db database.DB,
+	codeIntelDB codeintelshared.CodeIntelDB,
 	uploadSvc *uploads.Service,
 	gitserverClient GitserverClient,
 ) *Service {
@@ -51,6 +54,7 @@ func NewService(
 	return newService(
 		scopedContext("service", observationCtx),
 		store.New(scopedContext("store", observationCtx), db),
+		lsifstore.New(scopedContext("lsifstore", observationCtx), codeIntelDB),
 		uploadSvc,
 		gitserverClient,
 		symbols.DefaultClient,
@@ -68,6 +72,11 @@ var (
 	exportObjectKeyPrefix         = env.Get("CODEINTEL_RANKING_DEVELOPMENT_EXPORT_OBJECT_KEY_PREFIX", "", "The object key prefix that should be used for development exports.")
 	developmentExportRepositories = env.Get("CODEINTEL_RANKING_DEVELOPMENT_EXPORT_REPOSITORIES", "github.com/sourcegraph/sourcegraph,github.com/sourcegraph/lsif-go", "Comma-separated list of repositories whose ranks should be exported for development.")
 
+	rankingMapReduceBatchSize   = env.MustGetInt("CODEINTEL_UPLOADS_MAP_REDUCE_RANKING_BATCH_SIZE", 10000, "How many references, definitions, and path counts to map and reduce at once.")
+	rankingGraphKey             = env.Get("CODEINTEL_UPLOADS_RANKING_GRAPH_KEY", "dev", "Backdoor value used to restart the ranking export procedure.")
+	rankingGraphBatchSize       = env.MustGetInt("CODEINTEL_UPLOADS_RANKING_GRAPH_BATCH_SIZE", 16, "How many uploads to process at once.")
+	rankingGraphDeleteBatchSize = env.MustGetInt("CODEINTEL_UPLOADS_RANKING_GRAPH_DELETE_BATCH_SIZE", 32, "How many stale uploads to delete at once.")
+
 	// Backdoor tuning for dotcom
 	mergeBatchSize = env.MustGetInt("CODEINTEL_RANKING_MERGE_BATCH_SIZE", 5000, "")
 )
@@ -76,41 +85,29 @@ func scopedContext(component string, observationCtx *observation.Context) *obser
 	return observation.ScopedContext("codeintel", "ranking", component, observationCtx)
 }
 
-func NewIndexer(observationCtx *observation.Context, service *Service) []goroutine.BackgroundRoutine {
+func NewGraphExporters(observationCtx *observation.Context, rankingService *Service) []goroutine.BackgroundRoutine {
 	return []goroutine.BackgroundRoutine{
-		background.NewRepositoryIndexer(
+		background.NewRankingGraphExporter(
 			observationCtx,
-			service.store,
-			service.gitserverClient,
-			service.symbolsClient,
-			IndexerConfigInst.Interval,
+			rankingService,
+			ConfigExportInst.NumRankingRoutines,
+			ConfigExportInst.RankingInterval,
+			ConfigExportInst.RankingBatchSize,
+			ConfigExportInst.RankingJobsEnabled,
 		),
-	}
-}
-
-func NewPageRankLoader(observationCtx *observation.Context, service *Service) []goroutine.BackgroundRoutine {
-	return []goroutine.BackgroundRoutine{
-		background.NewRankLoader(
+		background.NewRankingGraphMapper(
 			observationCtx,
-			service.store,
-			service.resultsBucket,
-			background.RankLoaderConfig{
-				ResultsGraphKey:        resultsGraphKey,
-				ResultsObjectKeyPrefix: resultsObjectKeyPrefix,
-			},
-			LoaderConfigInst.LoadInterval,
+			rankingService,
+			ConfigExportInst.NumRankingRoutines,
+			ConfigExportInst.RankingInterval,
+			ConfigExportInst.RankingJobsEnabled,
 		),
-		background.NewRankMerger(
+		background.NewRankingGraphReducer(
 			observationCtx,
-			service.store,
-			service.resultsBucket,
-			background.RankMergerConfig{
-				ResultsGraphKey:               resultsGraphKey,
-				MergeBatchSize:                mergeBatchSize,
-				ExportObjectKeyPrefix:         exportObjectKeyPrefix,
-				DevelopmentExportRepositories: developmentExportRepositories,
-			},
-			LoaderConfigInst.MergeInterval,
+			rankingService,
+			ConfigExportInst.NumRankingRoutines,
+			ConfigExportInst.RankingInterval,
+			ConfigExportInst.RankingJobsEnabled,
 		),
 	}
 }

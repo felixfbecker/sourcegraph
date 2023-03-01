@@ -60,9 +60,6 @@ var additionalJobs = map[string]job.Job{
 	"auth-sourcegraph-operator-cleaner":  auth.NewSourcegraphOperatorCleaner(),
 	"auth-permission-sync-job-cleaner":   auth.NewPermissionSyncJobCleaner(),
 	"auth-permission-sync-job-scheduler": auth.NewPermissionSyncJobScheduler(),
-
-	// Note: experimental (not documented)
-	"codeintel-ranking-sourcer": codeintel.NewRankingSourcerJob(),
 }
 
 // SetAuthzProviders waits for the database to be initialized, then periodically refreshes the
