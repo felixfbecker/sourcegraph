@@ -16,6 +16,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/conf/deploy"
 	"github.com/sourcegraph/sourcegraph/internal/database"
+	"github.com/sourcegraph/sourcegraph/internal/search/job/jobutil"
 )
 
 // Services is a bag of HTTP handlers and factory functions that are registered by the
@@ -47,6 +48,7 @@ type Services struct {
 	NewExecutorProxyHandler     NewExecutorProxyHandler
 	NewGitHubAppSetupHandler    NewGitHubAppSetupHandler
 	NewComputeStreamHandler     NewComputeStreamHandler
+	EnterpriseSearchJobs        jobutil.EnterpriseJobs
 	AuthzResolver               graphqlbackend.AuthzResolver
 	BatchChangesResolver        graphqlbackend.BatchChangesResolver
 	CodeIntelResolver           graphqlbackend.CodeIntelResolver
@@ -108,6 +110,7 @@ func DefaultServices() Services {
 		NewGitHubAppSetupHandler:        func() http.Handler { return makeNotFoundHandler("Sourcegraph GitHub App setup") },
 		NewComputeStreamHandler:         func() http.Handler { return makeNotFoundHandler("compute streaming endpoint") },
 		CodeInsightsDataExportHandler:   makeNotFoundHandler("code insights data export handler"),
+		EnterpriseSearchJobs:            jobutil.NewUnimplementedEnterpriseJobs(),
 	}
 }
 
